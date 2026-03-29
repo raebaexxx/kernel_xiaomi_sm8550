@@ -226,10 +226,6 @@ fail:
 	return false;
 }
 
-#ifdef CONFIG_KSU_SUSFS
-extern int ksu_handle_execveat_init(struct filename *filename);
-#endif // #ifdef CONFIG_KSU_SUSFS
-
 static void ksu_initialize_selinux_tw_func(struct callback_head *cb)
 {
 	apply_kernelsu_rules();
@@ -237,6 +233,10 @@ static void ksu_initialize_selinux_tw_func(struct callback_head *cb)
 	setup_ksu_cred();
 	kfree(cb);
 }
+
+#ifdef CONFIG_KSU_SUSFS
+extern int ksu_handle_execveat_init(struct filename *filename);
+#endif // #ifdef CONFIG_KSU_SUSFS
 
 // IMPORTANT NOTE: the call from execve_handler_pre WON'T provided correct value for envp and flags in GKI version
 int ksu_handle_execveat_ksud(int *fd, struct filename **filename_ptr,

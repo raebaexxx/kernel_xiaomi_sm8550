@@ -41,7 +41,7 @@ static int seq_show(struct seq_file *m, void *v)
 #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
 	int mnt_id = 0;
 	unsigned long ino = 0;
-#endif // #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+#endif // #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT	
 
 	task = get_proc_task(m->private);
 	if (!task)

@@ -280,6 +280,7 @@ retry:
 		goto out;
 
 	error = vfs_getattr(&path, stat, request_mask, flags);
+
 #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 	if (real_mount(path.mnt)->mnt_id >= DEFAULT_KSU_MNT_ID &&
 		likely(susfs_is_current_proc_umounted_app()))
@@ -289,6 +290,7 @@ retry:
 #else
 	stat->mnt_id = real_mount(path.mnt)->mnt_id;
 #endif // #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
+
 	stat->result_mask |= STATX_MNT_ID;
 	if (path.mnt->mnt_root == path.dentry)
 		stat->attributes |= STATX_ATTR_MOUNT_ROOT;

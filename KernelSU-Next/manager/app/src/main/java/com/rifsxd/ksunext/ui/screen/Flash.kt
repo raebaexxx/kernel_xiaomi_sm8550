@@ -86,8 +86,7 @@ fun flashModulesSequentially(
 @Destination<RootGraph>
 fun FlashScreen(
     navigator: DestinationsNavigator,
-    flashIt: FlashIt,
-    finishIntent: Boolean = false
+    flashIt: FlashIt
 ) {
 
     var text by rememberSaveable { mutableStateOf("") }
@@ -124,39 +123,58 @@ fun FlashScreen(
 
     BackHandler(enabled = flashing != FlashingStatus.FLASHING) {
         navigator.popBackStack()
-        if (finishIntent) activity?.finish()
     }
 
     val confirmDialog = rememberConfirmDialog()
-    var confirmed by rememberSaveable { mutableStateOf(flashIt !is FlashIt.FlashModules) }
+    var confirmed by rememberSaveable { mutableStateOf(flashIt !is FlashIt.FlashModules && flashIt !is FlashIt.FlashAnyKernel) }
     var pendingFlashIt by rememberSaveable { mutableStateOf<FlashIt?>(null) }
     var hasFlashed by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(flashIt) {
-        if (flashIt is FlashIt.FlashModules && !confirmed) {
-            val uris = flashIt.uris
-            val moduleNames =
-                uris.mapIndexed { index, uri -> "\n${index + 1}. ${uri.getFileName(context)}" }
-                    .joinToString("")
-            val confirmContent =
-                context.getString(R.string.module_install_prompt_with_name, moduleNames)
-            val confirmTitle = context.getString(R.string.module)
-            val result = confirmDialog.awaitConfirm(
-                title = confirmTitle,
-                content = confirmContent,
-                markdown = true
-            )
-            if (result == ConfirmResult.Confirmed) {
+        when {
+            flashIt is FlashIt.FlashModules && !confirmed -> {
+                val uris = flashIt.uris
+                val moduleNames =
+                    uris.mapIndexed { index, uri -> "\n${index + 1}. ${uri.getFileName(context)}" }
+                        .joinToString("")
+                val confirmContent =
+                    context.getString(R.string.module_install_prompt_with_name, moduleNames)
+                val confirmTitle = context.getString(R.string.module)
+                val result = confirmDialog.awaitConfirm(
+                    title = confirmTitle,
+                    content = confirmContent,
+                    markdown = true
+                )
+                if (result == ConfirmResult.Confirmed) {
+                    confirmed = true
+                    pendingFlashIt = flashIt
+                } else {
+                    // User cancelled, go back
+                    navigator.popBackStack()
+                }
+            }
+            flashIt is FlashIt.FlashAnyKernel && !confirmed -> {
+                val name = flashIt.uri.getFileName(context)
+                val confirmContent =
+                    context.getString(R.string.anykernel_flash_prompt, name)
+                // reuse the existing label for title
+                val confirmTitle = context.getString(R.string.flash_anykernel)
+                val result = confirmDialog.awaitConfirm(
+                    title = confirmTitle,
+                    content = confirmContent,
+                    markdown = true
+                )
+                if (result == ConfirmResult.Confirmed) {
+                    confirmed = true
+                    pendingFlashIt = flashIt
+                } else {
+                    navigator.popBackStack()
+                }
+            }
+            else -> {
                 confirmed = true
                 pendingFlashIt = flashIt
-            } else {
-                // User cancelled, go back
-                navigator.popBackStack()
-                if (finishIntent) activity?.finish()
             }
-        } else {
-            confirmed = true
-            pendingFlashIt = flashIt
         }
     }
 
@@ -193,7 +211,6 @@ fun FlashScreen(
                 flashing,
                 onBack = dropUnlessResumed {
                     navigator.popBackStack()
-                    if (finishIntent) activity?.finish()
                 },
                 onSave = {
                     scope.launch {
@@ -226,6 +243,30 @@ fun FlashScreen(
                 )
             }
 
+            if (flashIt is FlashIt.FlashAnyKernel && (flashing == FlashingStatus.SUCCESS)) {
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        scope.launch {
+                            withContext(Dispatchers.IO) {
+                                reboot()
+                            }
+                        }
+                    },
+                    icon = { Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.reboot)) },
+                    text = { Text(text = stringResource(R.string.reboot)) }
+                )
+            }
+
+            if (flashIt is FlashIt.FlashAnyKernel && (flashing == FlashingStatus.FAILED)) {
+                ExtendedFloatingActionButton(
+                    text = { Text(text = stringResource(R.string.close)) },
+                    icon = { Icon(Icons.Filled.Close, contentDescription = null) },
+                    onClick = {
+                        navigator.popBackStack()
+                    }
+                )
+            }
+
             if (flashIt is FlashIt.FlashModules && (flashing == FlashingStatus.FAILED)) {
                 // Close button for modules flashing
                 ExtendedFloatingActionButton(
@@ -233,7 +274,6 @@ fun FlashScreen(
                     icon = { Icon(Icons.Filled.Close, contentDescription = null) },
                     onClick = {
                         navigator.popBackStack()
-                        if (finishIntent) activity?.finish()
                     }
                 )
             }
@@ -275,6 +315,32 @@ fun FlashScreen(
                             text = { Text(text = stringResource(R.string.reboot)) }
                         )
                     }
+                }
+            }
+
+            if ((flashIt is FlashIt.FlashUninstall || flashIt is FlashIt.FlashRestore) && (flashing == FlashingStatus.SUCCESS || flashing == FlashingStatus.FAILED)) {
+                if (flashing == FlashingStatus.SUCCESS) {
+                    // Show reboot button on successful uninstall or restore
+                    ExtendedFloatingActionButton(
+                        onClick = {
+                            scope.launch {
+                                withContext(Dispatchers.IO) {
+                                    reboot()
+                                }
+                            }
+                        },
+                        icon = { Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.reboot)) },
+                        text = { Text(text = stringResource(R.string.reboot)) }
+                    )
+                } else {
+                    // Show close button on failure
+                    ExtendedFloatingActionButton(
+                        text = { Text(text = stringResource(R.string.close)) },
+                        icon = { Icon(Icons.Filled.Close, contentDescription = null) },
+                        onClick = {
+                            navigator.popBackStack()
+                        }
+                    )
                 }
             }
         },
@@ -320,10 +386,12 @@ fun Uri.getFileName(context: Context): String {
 
 @Parcelize
 sealed class FlashIt : Parcelable {
-    data class FlashBoot(val boot: Uri? = null, val lkm: LkmSelection, val ota: Boolean) :
+    data class FlashBoot(val boot: Uri? = null, val lkm: LkmSelection, val ota: Boolean, val allowShell: Boolean = false, val enableAdb: Boolean = false) :
         FlashIt()
 
     data class FlashModules(val uris: List<Uri>) : FlashIt()
+
+    data class FlashAnyKernel(val uri: Uri) : FlashIt()
 
     data object FlashRestore : FlashIt()
 
@@ -340,6 +408,14 @@ fun flashIt(
             flashIt.boot,
             flashIt.lkm,
             flashIt.ota,
+            flashIt.allowShell,
+            flashIt.enableAdb,
+            onStdout,
+            onStderr
+        )
+
+        is FlashIt.FlashAnyKernel -> flashAnyKernelZip(
+            flashIt.uri,
             onStdout,
             onStderr
         )

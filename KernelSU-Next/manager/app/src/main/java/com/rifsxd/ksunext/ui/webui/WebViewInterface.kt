@@ -12,26 +12,35 @@ import android.os.Handler
 import android.os.Looper
 import android.text.TextUtils
 import android.util.Base64
+import android.util.Log
 import android.view.Window
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.widget.Toast
+import androidx.core.content.pm.PackageInfoCompat
 import androidx.core.graphics.createBitmap
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.rifsxd.ksunext.ui.util.createRootShell
 import com.rifsxd.ksunext.ui.util.listModules
 import com.rifsxd.ksunext.ui.util.withNewRootShell
+import com.rifsxd.ksunext.ui.viewmodel.SuperUserViewModel
 import com.topjohnwu.superuser.CallbackList
 import com.topjohnwu.superuser.ShellUtils
 import com.topjohnwu.superuser.internal.UiThreadHandler
 import com.topjohnwu.superuser.io.SuFile
 import com.topjohnwu.superuser.io.SuFileInputStream
 import com.topjohnwu.superuser.io.SuFileOutputStream
+import com.rifsxd.ksunext.ui.util.module.Shortcut
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.BufferedOutputStream
 import java.io.File
+import java.util.UUID
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ConcurrentHashMap
+
+const val TAG = "WebViewInterface"
 
 @Suppress("unused")
 class WebViewInterface(
@@ -190,6 +199,13 @@ class WebViewInterface(
     }
 
     @JavascriptInterface
+    fun enableInsets(enable: Boolean = true) {
+        if (context is WebUIActivity) {
+            context.enableInsets(enable)
+        }
+    }
+
+    @JavascriptInterface
     fun moduleInfo(): String {
         val moduleInfos = JSONArray(listModules())
         val currentModuleInfo = JSONObject()
@@ -211,49 +227,72 @@ class WebViewInterface(
         return currentModuleInfo.toString()
     }
 
-    @JavascriptInterface
-    fun listSystemPackages(): String {
-        val pm = context.packageManager
-        val packages = pm.getInstalledPackages(0)
-        val packageNames = packages
-            .mapNotNull { pkg ->
-                val appInfo = pkg.applicationInfo
-                if (appInfo != null && (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0) {
-                    pkg.packageName
-                } else null
-            }
-            .sorted()
-        val jsonArray = JSONArray()
-        for (pkgName in packageNames) {
-            jsonArray.put(pkgName)
+    fun canGoBack(): Boolean {
+        return webView.canGoBack()
+    }
+
+    fun goBack() {
+        webView.post {
+            webView.goBack()
         }
-        return jsonArray.toString()
     }
 
     @JavascriptInterface
-    fun listUserPackages(): String {
-        val pm = context.packageManager
-        val packages = pm.getInstalledPackages(0)
-        val packageNames = packages
-            .mapNotNull { pkg ->
-                val appInfo = pkg.applicationInfo
-                if (appInfo != null && (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) == 0) {
-                    pkg.packageName
-                } else null
+    fun createShortcut(): Boolean {
+        return try {
+            val moduleId = File(modDir).name
+
+            val infoJson = JSONObject(moduleInfo())
+            val moduleName = infoJson.optString("name", moduleId)
+            val webuiIcon = infoJson.optString("webuiIcon").takeIf { it.isNotBlank() }
+
+            fun resolveIcon(p: String?): String? {
+                if (p.isNullOrBlank()) return null
+
+                try {
+                    val candidate = "/data/adb/modules/$moduleId/$p"
+                    val f = SuFile(candidate)
+                    if (f.exists()) return "su://$candidate"
+                } catch (_: Exception) {
+                }
+
+                if (p.startsWith("/")) {
+                    try {
+                        val f = SuFile(p)
+                        if (f.exists()) return "su://$p"
+                    } catch (_: Exception) {
+                    }
+                    return "file://$p"
+                }
+
+                return p
             }
-            .sorted()
-        val jsonArray = JSONArray()
-        for (pkgName in packageNames) {
-            jsonArray.put(pkgName)
+
+            val resolved = resolveIcon(webuiIcon)
+
+            Handler(Looper.getMainLooper()).post {
+                Shortcut.createModuleWebUiShortcut(context, moduleId, moduleName, resolved)
+            }
+            true
+        } catch (e: Exception) {
+            false
         }
-        return jsonArray.toString()
     }
 
     @JavascriptInterface
-    fun listAllPackages(): String {
-        val pm = context.packageManager
-        val packages = pm.getInstalledPackages(0)
-        val packageNames = packages.map { it.packageName }.sorted()
+    fun listPackages(type: String): String {
+        val packageNames = SuperUserViewModel.apps
+            .filter { appInfo ->
+                val flags = appInfo.packageInfo.applicationInfo?.flags ?: 0
+                when (type.lowercase()) {
+                    "system" -> (flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                    "user" -> (flags and ApplicationInfo.FLAG_SYSTEM) == 0
+                    else -> true
+                }
+            }
+            .map { it.packageName }
+            .sorted()
+
         val jsonArray = JSONArray()
         for (pkgName in packageNames) {
             jsonArray.put(pkgName)
@@ -263,25 +302,24 @@ class WebViewInterface(
 
     @JavascriptInterface
     fun getPackagesInfo(packageNamesJson: String): String {
-        val pm = context.packageManager
         val packageNames = JSONArray(packageNamesJson)
         val jsonArray = JSONArray()
+        val appMap = SuperUserViewModel.apps.associateBy { it.packageName }
         for (i in 0 until packageNames.length()) {
             val pkgName = packageNames.getString(i)
-            try {
-                val pkg = pm.getPackageInfo(pkgName, 0)
-                val appInfo = pkg.applicationInfo
+            val appInfo = appMap[pkgName]
+            if (appInfo != null) {
+                val pkg = appInfo.packageInfo
+                val app = pkg.applicationInfo
                 val obj = JSONObject()
-                @Suppress("DEPRECATION")
-                val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) pkg.longVersionCode else pkg.versionCode
                 obj.put("packageName", pkg.packageName)
                 obj.put("versionName", pkg.versionName ?: "")
-                obj.put("versionCode", versionCode)
-                obj.put("appLabel", if (appInfo != null) pm.getApplicationLabel(appInfo).toString() else "")
-                obj.put("isSystem", appInfo != null && (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0)
-                obj.put("uid", appInfo?.uid ?: JSONObject.NULL)
+                obj.put("versionCode", PackageInfoCompat.getLongVersionCode(pkg))
+                obj.put("appLabel", appInfo.label)
+                obj.put("isSystem", if (app != null) ((app.flags and ApplicationInfo.FLAG_SYSTEM) != 0) else JSONObject.NULL)
+                obj.put("uid", app?.uid ?: JSONObject.NULL)
                 jsonArray.put(obj)
-            } catch (e: Exception) {
+            } else {
                 val obj = JSONObject()
                 obj.put("packageName", pkgName)
                 obj.put("error", "Package not found or inaccessible")
@@ -295,21 +333,21 @@ class WebViewInterface(
 
     @JavascriptInterface
     fun cacheAllPackageIcons(size: Int) {
-        val pm = context.packageManager
-        val packages = pm.getInstalledPackages(0)
         val outputStream = java.io.ByteArrayOutputStream()
-        for (pkg in packages) {
-            val pkgName = pkg.packageName
-            if (packageIconCache.containsKey(pkgName)) continue
+        SuperUserViewModel.apps.forEach { appInfo ->
+            val pkgName = appInfo.packageName
+            if (packageIconCache.containsKey(pkgName)) return@forEach
             try {
-                val appInfo = pm.getApplicationInfo(pkgName, 0)
-                val drawable = pm.getApplicationIcon(appInfo)
-                val bitmap = drawableToBitmap(drawable, size)
-                outputStream.reset()
-                bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
-                val byteArray = outputStream.toByteArray()
-                val iconBase64 = "data:image/png;base64," + Base64.encodeToString(byteArray, Base64.NO_WRAP)
-                packageIconCache[pkgName] = iconBase64
+                SuperUserViewModel.getAppIconDrawable(context, pkgName)?.let { drawable ->
+                    val bitmap = drawableToBitmap(drawable, size)
+                    outputStream.reset()
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
+                    val byteArray = outputStream.toByteArray()
+                    val iconBase64 = "data:image/png;base64," + Base64.encodeToString(byteArray, Base64.NO_WRAP)
+                    packageIconCache[pkgName] = iconBase64
+                } ?: run {
+                     packageIconCache[pkgName] = ""
+                }
             } catch (_: Exception) {
                 packageIconCache[pkgName] = ""
             }
@@ -318,7 +356,6 @@ class WebViewInterface(
 
     @JavascriptInterface
     fun getPackagesIcons(packageNamesJson: String, size: Int): String {
-        val pm = context.packageManager
         val packageNames = JSONArray(packageNamesJson)
         val jsonArray = JSONArray()
         val outputStream = java.io.ByteArrayOutputStream()
@@ -329,17 +366,19 @@ class WebViewInterface(
             var iconBase64 = packageIconCache[pkgName]
             if (iconBase64 == null) {
                 try {
-                    val appInfo = pm.getApplicationInfo(pkgName, 0)
-                    val drawable = pm.getApplicationIcon(appInfo)
-                    val bitmap = drawableToBitmap(drawable, size)
-                    outputStream.reset()
-                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
-                    val byteArray = outputStream.toByteArray()
-                    iconBase64 = "data:image/png;base64," + Base64.encodeToString(byteArray, Base64.NO_WRAP)
+                    SuperUserViewModel.getAppIconDrawable(context, pkgName)?.let { drawable ->
+                        val bitmap = drawableToBitmap(drawable, size)
+                        outputStream.reset()
+                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
+                        val byteArray = outputStream.toByteArray()
+                        iconBase64 = "data:image/png;base64," + Base64.encodeToString(byteArray, Base64.NO_WRAP)
+                    } ?: run {
+                        iconBase64 = ""
+                    }
                 } catch (_: Exception) {
                     iconBase64 = ""
                 }
-                packageIconCache[pkgName] = iconBase64
+                packageIconCache[pkgName] = iconBase64 ?: ""
             }
             obj.put("icon", iconBase64)
             jsonArray.put(obj)
@@ -429,6 +468,101 @@ class WebViewInterface(
         } catch (e: Exception) {
             false
         }
+    }
+
+    val fileOutputStream = FileOutputStreamInterface()
+
+    @JavascriptInterface
+    fun fileOutputStream(): FileOutputStreamInterface {
+        return fileOutputStream
+    }
+
+    fun destroy() {
+        fileOutputStream.closeAll()
+    }
+}
+
+class FileOutputStreamInterface {
+    private val openStreams = ConcurrentHashMap<String, BufferedOutputStream>()
+
+    @JavascriptInterface
+    fun open(path: String, append: Boolean): String {
+        return try {
+            val file = SuFile(path)
+            val fos = SuFileOutputStream.open(file, append)
+            val bos = BufferedOutputStream(fos, 64 * 1024)
+            val id = UUID.randomUUID().toString()
+            openStreams[id] = bos
+            id
+        } catch (e: Exception) {
+            Log.e(TAG, "open failed", e)
+            ""
+        }
+    }
+
+    @JavascriptInterface
+    fun open(path: String): String {
+        return open(path, false)
+    }
+
+    @JavascriptInterface
+    fun writeByte(id: String, b: Int): Boolean {
+        return runCatching {
+            val bos = openStreams[id] ?: return false
+            synchronized(bos) { bos.write(b) }
+            true
+        }.getOrElse {
+            Log.e(TAG, "writeByte failed", it)
+            false
+        }
+    }
+
+    @JavascriptInterface
+    fun write(id: String, base64: String): Boolean {
+        return runCatching {
+            val bos = openStreams[id] ?: return false
+            val data = Base64.decode(base64, Base64.NO_WRAP)
+            synchronized(bos) { bos.write(data) }
+            true
+        }.getOrElse {
+            Log.e(TAG, "write failed", it)
+            false
+        }
+    }
+
+    @JavascriptInterface
+    fun flush(id: String): Boolean {
+        return runCatching {
+            val bos = openStreams[id] ?: return false
+            synchronized(bos) { bos.flush() }
+            true
+        }.getOrElse {
+            Log.e(TAG, "flush failed", it)
+            false
+        }
+    }
+
+    @JavascriptInterface
+    fun close(id: String): Boolean {
+        val bos = openStreams.remove(id) ?: return false
+        return runCatching {
+            synchronized(bos) { bos.close() }
+            true
+        }.getOrElse {
+            Log.e(TAG, "close failed", it)
+            false
+        }
+    }
+
+    fun closeAll() {
+        openStreams.forEach { (id, bos) ->
+            runCatching {
+                synchronized(bos) { bos.close() }
+            }.onFailure {
+                Log.e(TAG, "closeAll failed for $id", it)
+            }
+        }
+        openStreams.clear()
     }
 }
 

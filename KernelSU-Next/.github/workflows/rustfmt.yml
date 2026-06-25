@@ -1,4 +1,4 @@
-name: Rustfmt Check
+name: Rustfmt check
 
 on:
   push:
@@ -6,15 +6,13 @@ on:
       - 'next'
     paths:
       - '.github/workflows/rustfmt.yml'
-      - 'userspace/ksud_magic/**'
-      - 'userspace/ksud_overlayfs/**'
+      - 'userspace/**'
   pull_request:
     branches:
       - 'next'
     paths:
       - '.github/workflows/rustfmt.yml'
-      - 'userspace/ksud_magic/**'
-      - 'userspace/ksud_overlayfs/**'
+      - 'userspace/**'
 
 permissions:
   checks: write
@@ -23,22 +21,18 @@ jobs:
   format:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
 
-      - name: Setup Rustfmt
-        uses: dtolnay/rust-toolchain@nightly
+      - uses: dtolnay/rust-toolchain@nightly
         with:
           components: rustfmt
 
-      - name: Rustfmt Check on ksud_magic
-        uses: LoliGothick/rustfmt-check@master
+      - uses: LoliGothick/rustfmt-check@master
         with:
           token: ${{ github.token }}
-          working-directory: userspace/ksud_magic
+          working-directory: userspace/ksud
 
-      - name: Rustfmt Check on ksud_overlayfs
-        uses: LoliGothick/rustfmt-check@master
+      - uses: LoliGothick/rustfmt-check@master
         with:
           token: ${{ github.token }}
-          working-directory: userspace/ksud_overlayfs
+          working-directory: userspace/ksuinit

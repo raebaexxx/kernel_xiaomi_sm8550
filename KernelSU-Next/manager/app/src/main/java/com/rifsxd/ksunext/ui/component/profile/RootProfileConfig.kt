@@ -4,6 +4,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -25,6 +27,8 @@ import com.rifsxd.ksunext.Natives
 import com.rifsxd.ksunext.R
 import com.rifsxd.ksunext.profile.Capabilities
 import com.rifsxd.ksunext.profile.Groups
+import com.rifsxd.ksunext.toRawFlags
+import com.rifsxd.ksunext.toRootProfileFlags
 import com.rifsxd.ksunext.ui.component.rememberCustomDialog
 import com.rifsxd.ksunext.ui.util.isSepolicyValid
 
@@ -45,7 +49,6 @@ fun RootProfileConfig(
             )
         }
 
-        /* 
         var expanded by remember { mutableStateOf(false) }
         val currentNamespace = when (profile.namespace) {
             Natives.Profile.Namespace.INHERITED.ordinal -> stringResource(R.string.profile_namespace_inherited)
@@ -99,7 +102,6 @@ fun RootProfileConfig(
                 }
             }
         })
-        */
 
         UidPanel(uid = profile.uid, label = "uid", onUidChange = {
             onProfileChange(
@@ -145,6 +147,19 @@ fun RootProfileConfig(
                 )
             )
         }
+
+        RootProfileFlagPanel(
+            enabled = true,
+            selected = profile.flags.toRootProfileFlags(),
+            onSelectionChange = {
+                onProfileChange(
+                    profile.copy(
+                        flags = it.toRawFlags(),
+                        rootUseDefault = false
+                    )
+                )
+            }
+        )
 
         SELinuxPanel(profile = profile, onSELinuxChange = { domain, rules ->
             onProfileChange(
@@ -301,6 +316,75 @@ fun CapsPanel(
                         modifier = Modifier.padding(3.dp),
                         onClick = { /*TODO*/ },
                         label = { Text(group.display) })
+                }
+            }
+        }
+
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@Composable
+private fun RootProfileFlagPanel(
+    enabled: Boolean,
+    selected: List<Natives.Profile.RootProfileFlag>,
+    onSelectionChange: (flags: List<Natives.Profile.RootProfileFlag>) -> Unit
+) {
+    val selectFlagsDialog = rememberCustomDialog { dismiss ->
+        val flags = Natives.Profile.RootProfileFlag.entries.toTypedArray().sortedBy { it.display }
+        val options = flags.map { value ->
+            ListOption(
+                titleText = value.display,
+                subtitleText = stringResource(value.desc),
+                selected = selected.contains(value),
+            )
+        }
+
+        val selection = HashSet(selected)
+        ListDialog(
+            state = rememberUseCaseState(visible = true, onFinishedRequest = {
+                onSelectionChange(selection.toList())
+            }, onCloseRequest = {
+                dismiss()
+            }),
+            header = Header.Default(
+                title = stringResource(R.string.profile_flags),
+            ),
+            selection = ListSelection.Multiple(
+                showCheckBoxes = true,
+                options = options
+            ) { indecies, _ ->
+                // Handle selection
+                selection.clear()
+                indecies.forEach { index ->
+                    val flag = flags[index]
+                    selection.add(flag)
+                }
+            }
+        )
+    }
+
+    OutlinedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+    ) {
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable {
+                    if (enabled) selectFlagsDialog.show()
+                }
+                .padding(16.dp)
+        ) {
+            Text(stringResource(R.string.profile_flags))
+            FlowRow {
+                selected.forEach { flag ->
+                    AssistChip(
+                        modifier = Modifier.padding(3.dp),
+                        onClick = { /*TODO*/ },
+                        label = { Text(flag.display) })
                 }
             }
         }

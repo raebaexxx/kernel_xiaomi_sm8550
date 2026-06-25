@@ -3,15 +3,15 @@ updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: daily
+      interval: weekly
     groups:
       actions:
         patterns:
           - "*"
   - package-ecosystem: cargo
-    directory: userspace/ksud_magic
+    directory: userspace/ksud
     schedule:
-      interval: daily
+      interval: weekly
     allow:
       - dependency-type: "all"
     groups:
@@ -19,9 +19,9 @@ updates:
         patterns:
           - "*"
   - package-ecosystem: cargo
-    directory: userspace/ksud_overlayfs
+    directory: userspace/ksuinit
     schedule:
-      interval: daily
+      interval: weekly
     allow:
       - dependency-type: "all"
     groups:
@@ -31,7 +31,7 @@ updates:
   - package-ecosystem: gradle
     directory: manager
     schedule:
-      interval: daily
+      interval: weekly
     groups:
       maven:
         patterns:

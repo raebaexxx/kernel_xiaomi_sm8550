@@ -80,13 +80,12 @@ cmd_build() {
         exit 1
     fi
 
-    # Build just the kernel module
-    echo "Building kernel..."
-    m kernel_modules 2>&1 || {
-        echo "Kernel build failed!"
+    echo "Building boot image (contains kernel)..."
+    m bootimage 2>&1 || {
+        echo "Build failed! Try 'build-all' for full ROM build."
         exit 1
     }
-    echo "Kernel build complete."
+    echo "Boot image build complete."
 }
 
 cmd_build_all() {

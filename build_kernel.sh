@@ -80,13 +80,15 @@ cmd_build() {
         exit 1
     fi
 
-    echo "Building boot + init_boot images..."
-    m bootimage init_bootimage 2>&1 || {
+    echo "Building boot image (contains kernel)..."
+    m bootimage 2>&1 || {
         echo "Build failed! Try 'build-all' for full ROM build."
         exit 1
     }
-    echo "Images built:"
-    ls -la $ANDROID_BUILD_TOP/out/target/product/fuxi/boot.img $ANDROID_BUILD_TOP/out/target/product/fuxi/init_boot.img 2>/dev/null
+    echo "Boot image build complete."
+    echo ""
+    echo "NOTE: init_boot.img is not built with kernel-only build."
+    echo "Use init_boot.img from your previous full ROM build."
 }
 
 cmd_build_all() {

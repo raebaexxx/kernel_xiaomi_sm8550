@@ -100,7 +100,6 @@
 #include <linux/resctrl.h>
 #include <linux/cn_proc.h>
 #include <linux/cpufreq_times.h>
-
 #include <trace/events/oom.h>
 #include "internal.h"
 #include "fd.h"
@@ -1824,7 +1823,6 @@ out:
 	return ERR_PTR(error);
 }
 
-
 static int do_proc_readlink(struct path *path, char __user *buffer, int buflen)
 {
 	char *tmp = (char *)__get_free_page(GFP_KERNEL);
@@ -1833,7 +1831,6 @@ static int do_proc_readlink(struct path *path, char __user *buffer, int buflen)
 
 	if (!tmp)
 		return -ENOMEM;
-
 
 	pathname = d_path(path, tmp, PAGE_SIZE);
 	len = PTR_ERR(pathname);

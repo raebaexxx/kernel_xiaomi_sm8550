@@ -12,7 +12,6 @@
 
 static char *saved_boot_config;
 
-
 static int boot_config_proc_show(struct seq_file *m, void *v)
 {
 	if (saved_boot_config)

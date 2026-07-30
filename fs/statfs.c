@@ -9,7 +9,6 @@
 #include <linux/security.h>
 #include <linux/uaccess.h>
 #include <linux/compat.h>
-
 #include "internal.h"
 
 static int flags_by_mnt(int mnt_flags)
@@ -84,13 +83,9 @@ int vfs_get_fsid(struct dentry *dentry, __kernel_fsid_t *fsid)
 }
 EXPORT_SYMBOL(vfs_get_fsid);
 
-
-
 int vfs_statfs(const struct path *path, struct kstatfs *buf)
 {
 	int error;
-
-
 
 	error = statfs_by_dentry(path->dentry, buf);
 	if (!error)

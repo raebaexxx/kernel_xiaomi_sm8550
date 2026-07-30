@@ -43,7 +43,6 @@
 #include "internal.h"
 #include "mount.h"
 
-
 /* [Feb-1997 T. Schoebel-Theuer]
  * Fundamental changes in the pathname lookup mechanisms (namei)
  * were necessary because of omirr.  The reason is that omirr needs
@@ -5066,8 +5065,6 @@ out:
  *
  * Does not call security hook.
  */
-
-
 int vfs_readlink(struct dentry *dentry, char __user *buffer, int buflen)
 {
 	struct inode *inode = d_inode(dentry);

@@ -734,6 +734,7 @@ static void avc_audit_post_callback(struct audit_buffer *ab, void *a)
 		audit_log_format(ab, " tsid=%d", sad->tsid);
 	else
 		audit_log_format(ab, " tcontext=%s", tcontext);
+
 	tclass = secclass_map[sad->tclass-1].name;
 	audit_log_format(ab, " tclass=%s", tclass);
 

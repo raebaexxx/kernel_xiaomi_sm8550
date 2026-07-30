@@ -177,11 +177,7 @@ enum xm_property_id {
 	XM_PROP_VBUS_DISABLE,
 	XM_PROP_REAL_TYPE,
 	/*used for pd authentic*/
-#ifdef CONFIG_TARGET_PRODUCT_SOCRATES
-	XM_PROP_VERIFY_PROCESS = 11,
-#else
 	XM_PROP_VERIFY_PROCESS = 12,
-#endif
 	XM_PROP_VDM_CMD_CHARGER_VERSION,
 	XM_PROP_VDM_CMD_CHARGER_VOLTAGE,
 	XM_PROP_VDM_CMD_CHARGER_TEMP,
@@ -215,11 +211,7 @@ enum xm_property_id {
 	XM_PROP_INPUT_SUSPEND,
 	XM_PROP_FASTCHGMODE,
 	XM_PROP_NIGHT_CHARGING,
-#ifdef CONFIG_TARGET_PRODUCT_SOCRATES
-	XM_PROP_SOC_DECIMAL = 46,
-#else
 	XM_PROP_SOC_DECIMAL = 47,
-#endif
 	XM_PROP_SOC_DECIMAL_RATE,
 	XM_PROP_QUICK_CHARGE_TYPE,
 	XM_PROP_APDO_MAX,
@@ -229,11 +221,7 @@ enum xm_property_id {
 	XM_PROP_FG_RAW_SOC,
 	/* wireless charge infor */
 	XM_PROP_WLS_START,
-#ifdef CONFIG_TARGET_PRODUCT_SOCRATES
-	XM_PROP_TX_MACL = 55,
-#else
 	XM_PROP_TX_MACL = 56,
-#endif
 	XM_PROP_TX_MACH,
 	XM_PROP_RX_CRL,
 	XM_PROP_RX_CRH,
@@ -262,11 +250,7 @@ enum xm_property_id {
 	XM_PROP_TX_Q,
 	XM_PROP_WLS_END = 90,
 	/**********************/
-#ifdef CONFIG_TARGET_PRODUCT_SOCRATES
-	XM_PROP_SHUTDOWN_DELAY = 93,
-#else
 	XM_PROP_SHUTDOWN_DELAY = 94,
-#endif
 	XM_PROP_FAKE_TEMP,
 	XM_PROP_THERMAL_REMOVE,
 	XM_PROP_TYPEC_MODE,
@@ -311,11 +295,7 @@ enum xm_property_id {
 	XM_PROP_GET_LEARNING_POWER_DEV_B,
 	/*********nvt fuelgauge feature*********/
 	/*fuelgauge test node*/
-#ifdef CONFIG_TARGET_PRODUCT_SOCRATES
-	XM_PROP_FG1_QMAX = 136,
-#else
 	XM_PROP_FG1_QMAX = 137,
-#endif
 	XM_PROP_FG1_RM,
 	XM_PROP_FG1_FCC,
 	XM_PROP_FG1_SOH,
@@ -340,13 +320,8 @@ enum xm_property_id {
 	XM_PROP_FG1_SEAL_STATE,
 	XM_PROP_FG1_DF_CHECK,
 	/*end dual fuel high temperature intercept feature*/
-#ifdef CONFIG_TARGET_PRODUCT_SOCRATES
-	XM_PROP_FG_VENDOR_ID = 215,
-	XM_PROP_DAM_OVPGATE = 217,
-#else
 	XM_PROP_FG_VENDOR_ID = 216,
 	XM_PROP_DAM_OVPGATE = 218,
-#endif
 	XM_PROP_CHARGING_SUSPEND_BATTERY,
 	XM_PROP_LAST_NODE = 222,
 	XM_PROP_MAX,
@@ -2801,6 +2776,55 @@ static ssize_t ship_mode_en_show(struct class *c, struct class_attribute *attr,
 }
 static CLASS_ATTR_RW(ship_mode_en);
 
+static ssize_t charging_enabled_store(struct class *c,
+				      struct class_attribute *attr,
+				      const char *buf, size_t count)
+{
+	struct battery_chg_dev *bcdev = container_of(c, struct battery_chg_dev,
+						battery_class);
+	int rc;
+	bool val;
+
+	if (kstrtobool(buf, &val))
+		return -EINVAL;
+
+	if (val) {
+		/*
+		 * Enable charging, i.e. set the restricted current back to
+		 * the thermal limit and unset the restriction boolean flag.
+		 */
+		rc = __battery_psy_set_charge_current(bcdev,
+				bcdev->thermal_fcc_ua);
+		if (rc < 0)
+			return rc;
+		bcdev->restrict_fcc_ua = bcdev->thermal_fcc_ua;
+		bcdev->restrict_chg_en = 0;
+	} else {
+		/*
+		 * Disable charging, i.e. set the restricted current to zero
+		 * and set the restriction boolean flag.
+		 */
+		rc = __battery_psy_set_charge_current(bcdev, 0 /* 0 uA */);
+		if (rc < 0)
+			return rc;
+		bcdev->restrict_fcc_ua = 0;
+		bcdev->restrict_chg_en = 1;
+	}
+
+	return count;
+}
+
+static ssize_t charging_enabled_show(struct class *c,
+				     struct class_attribute *attr, char *buf)
+{
+	struct battery_chg_dev *bcdev = container_of(c, struct battery_chg_dev,
+						battery_class);
+	bool val = !bcdev->restrict_chg_en && bcdev->restrict_fcc_ua;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", val);
+}
+static CLASS_ATTR_RW(charging_enabled);
+
 static ssize_t bq2597x_chip_ok_show(struct class *c,
 		struct class_attribute *attr, char *buf)
 {
@@ -5019,6 +5043,7 @@ static struct attribute *battery_class_attrs[] = {
 	&class_attr_restrict_cur.attr,
 	&class_attr_usb_real_type.attr,
 	&class_attr_usb_typec_compliant.attr,
+	&class_attr_charging_enabled.attr,
 	&class_attr_bq2597x_chip_ok.attr,
 	&class_attr_bq2597x_slave_chip_ok.attr,
 	&class_attr_bq2597x_bus_current.attr,

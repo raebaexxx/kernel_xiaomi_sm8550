@@ -24,7 +24,6 @@
 #include "internal.h"
 #include "mount.h"
 
-
 /**
  * generic_fillattr - Fill in the basic attributes from the inode struct
  * @mnt_userns:	user namespace of the mount the inode was found from
@@ -172,9 +171,6 @@ EXPORT_SYMBOL_NS(vfs_getattr, ANDROID_GKI_VFS_EXPORT_ONLY);
  *
  * 0 will be returned on success, and a -ve error code if unsuccessful.
  */
-
-
-
 int vfs_fstat(int fd, struct kstat *stat)
 {
 	struct fd f;
@@ -187,7 +183,6 @@ int vfs_fstat(int fd, struct kstat *stat)
 	fdput(f);
 	return error;
 }
-
 
 /**
  * vfs_statx - Get basic and extra attributes by filename
@@ -211,7 +206,6 @@ static int vfs_statx(int dfd, const char __user *filename, int flags,
 	unsigned lookup_flags = 0;
 	int error;
 
-
 	if (flags & ~(AT_SYMLINK_NOFOLLOW | AT_NO_AUTOMOUNT | AT_EMPTY_PATH |
 		      AT_STATX_SYNC_TYPE))
 		return -EINVAL;
@@ -229,9 +223,7 @@ retry:
 		goto out;
 
 	error = vfs_getattr(&path, stat, request_mask, flags);
-
 	stat->mnt_id = real_mount(path.mnt)->mnt_id;
-
 	stat->result_mask |= STATX_MNT_ID;
 	if (path.mnt->mnt_root == path.dentry)
 		stat->attributes |= STATX_ATTR_MOUNT_ROOT;

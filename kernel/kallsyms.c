@@ -786,7 +786,25 @@ static int s_show(struct seq_file *m, void *p)
 			susfs_starts_with(iter->name, "handle_sepolicy") ||
 			susfs_starts_with(iter->name, "getenforce") ||
 			susfs_starts_with(iter->name, "setenforce") ||
-			susfs_starts_with(iter->name, "is_zygote"))
+			susfs_starts_with(iter->name, "is_zygote") ||
+			// Prefix matching alone leaves names that merely *contain* the
+			// marker visible: anon_ksu_fops, anon_ksu_ioctl(.cfi_jt),
+			// anon_ksu_release(.cfi_jt), setup_ksu_cred, is_task_ksu_domain,
+			// is_ksud_exists, do_ksu_adb_root_handle_execve, and clang's
+			// __initstub__kmod_kernelsu__NNN_NNN_kernelsu_initN{.cfi} CFI
+			// stubs. Each one is a plain "KernelSU is loaded here" tell in
+			// /proc/kallsyms, so also match on substring.
+			//
+			// Deliberately _not_ a bare strstr(name, "ksu"): "ksu" is a
+			// substring of chksum/checksum, so that would also hide ~134
+			// unrelated symbols (ext4_chksum, fat_checksum,
+			// exfat_update_dir_chksum, drm_dp_send_real_edid_checksum, ...).
+			// Measured against this kernel: the needles below match exactly
+			// the 11 leaked names and nothing else.
+			strstr(iter->name, "_ksu_") ||
+			strstr(iter->name, "_ksud") ||
+			strstr(iter->name, "kernelsu") ||
+			strstr(iter->name, "susfs"))
 		{
 			return 0;
 		}

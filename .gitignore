@@ -167,3 +167,12 @@ arch/*/boot/dts/vendor
 
 # Documentation toolchain
 sphinx_*/
+
+# KernelSU-Next (nested checkout, see KernelSU-Next/.git)
+/KernelSU-Next/
+/drivers/kernelsu
+/scripts/basic/cc-wrapper
+/scripts/basic/fixdep
+/scripts/basic/record-swizzle
+/scripts/basic/sorttable
+/scripts/kconfig/conf

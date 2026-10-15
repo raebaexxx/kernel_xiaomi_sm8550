@@ -237,17 +237,8 @@ static int sel_open_handle_status(struct inode *inode, struct file *filp)
 	struct page    *status = selinux_kernel_status_page(fsi->state);
 #ifdef CONFIG_KSU_SUSFS
 	void *data;
-	bool should_check_current = (likely(current_uid().val >= 10000 && ksu_selinux_hide_running));
 
-	if (static_branch_unlikely(&fake_status_initialize_key)) {
-		if (!fake_status) {
-			initialize_fake_status();
-		} else {
-			goto orig_flow;
-		}
-	}
-
-	if (should_check_current) {
+	if (likely(current_uid().val >= 10000 && ksu_selinux_hide_running)) {
 		mutex_lock(&selinux_state.status_lock);
 		data = fake_status;
 		mutex_unlock(&selinux_state.status_lock);
@@ -256,14 +247,19 @@ static int sel_open_handle_status(struct inode *inode, struct file *filp)
 			return 0;
 		}
 	}
-
-orig_flow:
 #endif // #ifdef CONFIG_KSU_SUSFS
 
 	if (!status)
 		return -ENOMEM;
 
 	filp->private_data = status;
+
+#ifdef CONFIG_KSU_SUSFS
+	if (static_branch_unlikely(&fake_status_initialize_key)) {
+		if (!fake_status)
+			initialize_fake_status();
+	}
+#endif // #ifdef CONFIG_KSU_SUSFS
 
 	return 0;
 }

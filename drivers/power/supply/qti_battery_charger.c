@@ -211,6 +211,7 @@ enum xm_property_id {
 	XM_PROP_INPUT_SUSPEND,
 	XM_PROP_FASTCHGMODE,
 	XM_PROP_NIGHT_CHARGING,
+	XM_PROP_BLANK_STATUS = 45,
 	XM_PROP_SOC_DECIMAL = 47,
 	XM_PROP_SOC_DECIMAL_RATE,
 	XM_PROP_QUICK_CHARGE_TYPE,
@@ -1696,6 +1697,39 @@ static ssize_t night_charging_show(struct class *c,
 	return scnprintf(buf, PAGE_SIZE, "%u\n", pst->prop[XM_PROP_NIGHT_CHARGING]);
 }
 static CLASS_ATTR_RW(night_charging);
+
+static ssize_t blank_status_store(struct class *c,
+					struct class_attribute *attr,
+					const char *buf, size_t count)
+{
+	struct battery_chg_dev *bcdev = container_of(c, struct battery_chg_dev,
+						battery_class);
+	int rc;
+	bool val;
+
+	if (kstrtobool(buf, &val))
+		return -EINVAL;
+	rc = write_property_id(bcdev, &bcdev->psy_list[PSY_TYPE_XM],
+				XM_PROP_BLANK_STATUS, val);
+	if (rc < 0)
+		return rc;
+	bcdev->blank_state = val;
+	return count;
+}
+static ssize_t blank_status_show(struct class *c,
+					struct class_attribute *attr, char *buf)
+{
+	struct battery_chg_dev *bcdev = container_of(c, struct battery_chg_dev,
+						battery_class);
+	struct psy_state *pst = &bcdev->psy_list[PSY_TYPE_XM];
+	int rc;
+
+	rc = read_property_id(bcdev, pst, XM_PROP_BLANK_STATUS);
+	if (rc < 0)
+		return rc;
+	return scnprintf(buf, PAGE_SIZE, "%u\n", pst->prop[XM_PROP_BLANK_STATUS]);
+}
+static CLASS_ATTR_RW(blank_status);
 
 static int usb_psy_set_icl(struct battery_chg_dev *bcdev, u32 prop_id, int val)
 {
@@ -5027,6 +5061,7 @@ static struct attribute *battery_class_attrs[] = {
 	&class_attr_smart_batt.attr,
 	&class_attr_fg_raw_soc.attr,
 	&class_attr_night_charging.attr,
+	&class_attr_blank_status.attr,
 	&class_attr_connector_temp.attr,
 	&class_attr_real_type.attr,
 	&class_attr_battcont_online.attr,
@@ -5278,6 +5313,7 @@ static void panel_event_notifier_callback(enum panel_event_notifier_tag tag,
 			struct panel_event_notification *notification, void *data)
 {
 	struct battery_chg_dev *bcdev = data;
+	int rc;
 
 	if (!notification) {
 		pr_debug("Invalid panel notification\n");
@@ -5287,10 +5323,21 @@ static void panel_event_notifier_callback(enum panel_event_notifier_tag tag,
 	pr_debug("panel event received, type: %d\n", notification->notif_type);
 	switch (notification->notif_type) {
 	case DRM_PANEL_EVENT_BLANK:
+	case DRM_PANEL_EVENT_BLANK_LP:
+		bcdev->blank_state = 1;
 		battery_chg_notify_disable(bcdev);
+		rc = write_property_id(bcdev, &bcdev->psy_list[PSY_TYPE_XM],
+					XM_PROP_BLANK_STATUS, 1);
+		if (rc < 0)
+			pr_err("Failed to set blank status, rc=%d\n", rc);
 		break;
 	case DRM_PANEL_EVENT_UNBLANK:
+		bcdev->blank_state = 0;
 		battery_chg_notify_enable(bcdev);
+		rc = write_property_id(bcdev, &bcdev->psy_list[PSY_TYPE_XM],
+					XM_PROP_BLANK_STATUS, 0);
+		if (rc < 0)
+			pr_err("Failed to clear blank status, rc=%d\n", rc);
 		break;
 	default:
 		pr_debug("Ignore panel event: %d\n", notification->notif_type);
